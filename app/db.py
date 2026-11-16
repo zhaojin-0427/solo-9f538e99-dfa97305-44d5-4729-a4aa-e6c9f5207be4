@@ -51,8 +51,21 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at      TEXT NOT NULL
 );
 
+-- 编码影响分析：一份分析固定一个成功报告与该次提交的外显子定义（不可变）
+CREATE TABLE IF NOT EXISTS analyses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id   INTEGER NOT NULL REFERENCES reports(id),
+    batch_id    INTEGER NOT NULL REFERENCES batches(id),
+    status      TEXT NOT NULL CHECK (status IN ('ok', 'failed')),
+    error       TEXT,
+    exon_def    TEXT,          -- JSON: {"exons": [...], "strand": "+"|"-"}
+    payload     TEXT,          -- ok 时为 JSON 结果；failed 时为 NULL
+    created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, id);
 CREATE INDEX IF NOT EXISTS idx_reports_batch ON reports(batch_id, id);
+CREATE INDEX IF NOT EXISTS idx_analyses_report ON analyses(report_id, id);
 """
 
 

@@ -6,11 +6,30 @@ import json
 from flask import (Blueprint, Response, abort, flash, redirect,
                    render_template, request, url_for)
 
+from .coding import ValidationError as CodingError
+from .coding import analyze_coding
 from .db import get_db
 
 bp = Blueprint("main", __name__)
 
 KIND_LABEL = {"fasta": "FASTA", "csv": "CSV"}
+
+STATE_LABELS = {
+    "current": "当前结论",
+    "historical": "历史依据（已被更新的分析取代）",
+    "expired": "已过期（报告版本已更新）",
+    "rejected": "已拒绝（无部分结果）",
+}
+
+
+def _exon_display(exon_def: str) -> str:
+    """把分析保存的外显子定义转成易读文本；损坏时原样显示。"""
+    try:
+        data = json.loads(exon_def)
+        parts = [f"{int(e['start'])}-{int(e['end'])}" for e in data["exons"]]
+        return f"{data['strand']} 链 ｜ " + ", ".join(parts) + "（1 基，闭区间）"
+    except (TypeError, ValueError, KeyError):
+        return exon_def or "—"
 
 
 # ---------------------------------------------------------------- 辅助
@@ -162,9 +181,136 @@ def report_detail(bid, rid):
     is_current = (report["fasta_version"] == fv and report["csv_version"] == cv)
     payload = (json.loads(report["payload"])
                if report["status"] == "ok" else None)
+    analyses = db.execute(
+        "SELECT * FROM analyses WHERE report_id=? ORDER BY id DESC", (rid,)
+    ).fetchall()
+    # 分析结论状态：失败=已拒绝；报告已过期则全部过期；最新成功=当前，其余=历史依据
+    latest_ok = next((a["id"] for a in analyses if a["status"] == "ok"), None)
+    analysis_states = []
+    for a in analyses:
+        if a["status"] != "ok":
+            state = "rejected"
+        elif not is_current:
+            state = "expired"
+        elif a["id"] == latest_ok:
+            state = "current"
+        else:
+            state = "historical"
+        analysis_states.append({"row": a, "state": state})
     return render_template(
         "report.html", batch=batch, report=report, payload=payload,
         is_current=is_current, fv=fv, cv=cv,
+        analysis_states=analysis_states,
+        exon_display=_exon_display,
+        has_ref_seq=payload is not None and "ref_seq" in payload,
+    )
+
+
+def _parse_exon_form(form):
+    """从表单读取外显子定义；返回 (exons, strand)。"""
+    strand = form.get("strand", "+")
+    exons = []
+    for i in (1, 2):
+        start = form.get(f"exon{i}_start", "").strip()
+        end = form.get(f"exon{i}_end", "").strip()
+        if not start and not end:
+            continue
+        exons.append({"start": start, "end": end})
+    return exons, strand
+
+
+@bp.post("/batches/<int:bid>/reports/<int:rid>/coding")
+def analyze_report_coding(bid, rid):
+    """对某份成功报告做编码影响分析；分析固定该报告与其参考序列。"""
+    db = get_db()
+    _batch_or_404(db, bid)
+    report = db.execute(
+        "SELECT * FROM reports WHERE id=? AND batch_id=?", (rid, bid)
+    ).fetchone()
+    if report is None:
+        abort(404)
+    if report["status"] != "ok":
+        flash("该报告为失败报告，没有可分析的标准化位点")
+        return redirect(url_for("main.report_detail", bid=bid, rid=rid))
+
+    payload = json.loads(report["payload"])
+    if "ref_seq" not in payload:
+        flash("该报告未保存参考序列（旧版本生成），请重新计算后再分析")
+        return redirect(url_for("main.report_detail", bid=bid, rid=rid))
+
+    exons, strand = _parse_exon_form(request.form)
+    try:
+        result = analyze_coding(payload["ref_seq"], payload["groups"], exons, strand)
+    except CodingError as exc:
+        error = str(exc)
+    except Exception as exc:  # 非预期错误同样整次拒绝，不外泄堆栈
+        error = f"内部错误: {exc}"
+    else:
+        error = None
+
+    if error is not None:
+        db.execute(
+            "INSERT INTO analyses(report_id, batch_id, status, error, exon_def,"
+            " payload, created_at) VALUES (?,?,'failed',?,?,NULL, datetime('now'))",
+            (rid, bid, error, json.dumps({"exons": exons, "strand": strand},
+                                         ensure_ascii=False)),
+        )
+        db.commit()
+        flash(f"编码影响分析被整次拒绝：{error}")
+        return redirect(url_for("main.report_detail", bid=bid, rid=rid))
+
+    exon_def = result["exons"]
+    cur = db.execute(
+        "INSERT INTO analyses(report_id, batch_id, status, error, exon_def,"
+        " payload, created_at) VALUES (?,?,'ok',NULL,?,?, datetime('now'))",
+        (rid, bid,
+         json.dumps({"exons": exon_def, "strand": strand}, ensure_ascii=False),
+         json.dumps(result, ensure_ascii=False)),
+    )
+    db.commit()
+    flash(f"编码影响分析 #{cur.lastrowid} 已完成")
+    return redirect(url_for("main.analysis_detail", bid=bid, rid=rid,
+                            aid=cur.lastrowid))
+
+
+@bp.get("/batches/<int:bid>/reports/<int:rid>/analyses/<int:aid>")
+def analysis_detail(bid, rid, aid):
+    db = get_db()
+    batch = _batch_or_404(db, bid)
+    report = db.execute(
+        "SELECT * FROM reports WHERE id=? AND batch_id=?", (rid, bid)
+    ).fetchone()
+    if report is None:
+        abort(404)
+    analysis = db.execute(
+        "SELECT * FROM analyses WHERE id=? AND report_id=? AND batch_id=?",
+        (aid, rid, bid),
+    ).fetchone()
+    if analysis is None:
+        abort(404)
+    fv, cv = _current_versions(db, bid)
+    is_current_report = (report["status"] == "ok"
+                         and report["fasta_version"] == fv
+                         and report["csv_version"] == cv)
+    latest_ok = db.execute(
+        "SELECT MAX(id) AS aid FROM analyses WHERE report_id=? AND status='ok'",
+        (rid,),
+    ).fetchone()["aid"]
+    if analysis["status"] != "ok":
+        state = "rejected"
+    elif not is_current_report:
+        state = "expired"
+    elif analysis["id"] == latest_ok:
+        state = "current"
+    else:
+        state = "historical"
+    payload = (json.loads(analysis["payload"])
+               if analysis["status"] == "ok" else None)
+    return render_template(
+        "analysis.html", batch=batch, report=report, analysis=analysis,
+        payload=payload, is_current_report=is_current_report, state=state,
+        state_label=STATE_LABELS[state], exon_display=_exon_display,
+        fv=fv, cv=cv,
     )
 
 

@@ -227,6 +227,8 @@ def compute_report(fasta_text: str, csv_text: str) -> dict:
     return {
         "chrom": chrom,
         "ref_len": len(seq),
+        # 报告固定使用的参考序列：编码影响分析据此重建 CDS，不受后续更正影响
+        "ref_seq": seq,
         "groups": out_groups,
         "rows": out_rows,
         "vcf": render_vcf(chrom, len(seq), ordered),

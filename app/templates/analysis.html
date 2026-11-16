@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}编码影响分析 #{{ analysis.id }} · 报告 #{{ report.id }}{% endblock %}
+{% block content %}
+<h2>编码影响分析 #{{ analysis.id }}（报告 #{{ report.id }} · 批次 #{{ batch.id }}）</h2>
+<p>
+  固定输入版本：FASTA v{{ report.fasta_version }} / CSV v{{ report.csv_version }} ｜
+  生成于 {{ analysis.created_at }} UTC
+</p>
+<p>
+  {% if state == 'rejected' %}
+    <span class="badge bad">{{ state_label }} · 无部分结果</span>
+  {% elif state == 'expired' %}
+    <span class="badge old">{{ state_label }}（当前 FASTA v{{ fv }} / CSV v{{ cv }}），本分析不是当前结论</span>
+  {% elif state == 'historical' %}
+    <span class="badge old">{{ state_label }}，不是当前结论</span>
+  {% else %}
+    <span class="badge ok">{{ state_label }}</span>
+  {% endif %}
+</p>
+<p class="hint">
+  外显子定义：{{ exon_display(analysis.exon_def) }}
+  {% if payload %}（按提交时的定义固定，不随表单变化）{% endif %}
+</p>
+<p>
+  <a href="{{ url_for('main.report_detail', bid=batch.id, rid=report.id) }}">← 返回报告</a> ・
+  <a href="{{ url_for('main.batch_detail', bid=batch.id) }}">返回批次</a>
+</p>
+
+{% if analysis.status != 'ok' %}
+<section class="card">
+  <h3>整次拒绝原因</h3>
+  <p class="error">{{ analysis.error }}</p>
+  <p class="hint">外显子定义非法，本次未分析任何位点，不存在部分结果。</p>
+</section>
+{% else %}
+<section class="card">
+  <h3>分析依据</h3>
+  <p class="hint">
+    参考 {{ report.chrom or '—' }}（{{ report.ref_len }} bp，取自本报告固定版本）｜
+    链方向 {{ payload.strand }} ｜
+    外显子
+    {% for e in payload.exons %}{{ e.start }}-{{ e.end }}{% if not loop.last %}, {% endif %}{% endfor %}
+    ｜ 拼接 CDS 长度 {{ payload.cds_len }} bp（{{ (payload.cds_len // 3) }} 个密码子）
+  </p>
+  <p class="hint">按转录本方向拼接外显子，负链取反向互补；标准位点逐一定位到 CDS 后重建并翻译。</p>
+  <p>位点统计：编码可计算 {{ payload.summary.coding }} ・ 非编码 {{ payload.summary.non_coding }} ・ 边界不可判定 {{ payload.summary.boundary }}</p>
+</section>
+
+<section class="card">
+  <h3>参考蛋白序列（{{ payload.ref_protein|length }} aa）</h3>
+  <pre class="seq-block">{{ payload.ref_protein }}</pre>
+  <p class="hint">CDS：</p>
+  <pre class="seq-block">{{ payload.cds_seq }}</pre>
+</section>
+
+<section class="card">
+  <h3>各位点编码影响（{{ payload.sites|length }} 个标准位点）</h3>
+  <table>
+    <tr>
+      <th>#</th><th>源 ID（全部）</th><th>标准位点</th><th>类型</th><th>判定</th>
+      <th>首个变化位置</th><th>移码</th><th>提前终止</th>
+    </tr>
+    {% for s in payload.sites %}
+    <tr>
+      <td>{{ s.index }}</td>
+      <td>{{ s.ids|join(', ') }}</td>
+      <td class="seq">{{ s.pos }} / {{ s.ref }} / {{ s.alt }}</td>
+      <td>{{ s.kind_label }}</td>
+      <td>
+        {% if s.status == 'coding' %}<span class="badge ok">编码可计算</span>
+        {% elif s.status == 'non_coding' %}<span class="badge old">非编码</span>
+        {% else %}<span class="badge bad">边界不可判定</span>{% endif %}
+      </td>
+      {% if s.status == 'coding' %}
+      <td>{{ s.first_change if s.first_change else '无氨基酸变化' }}</td>
+      <td>{{ '是' if s.frameshift else '否' }}</td>
+      <td>{{ '是' if s.premature_stop else '否' }}</td>
+      {% else %}
+      <td colspan="3" class="hint">{{ s.reason }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+{% for s in payload.sites if s.status == 'coding' %}
+<section class="card">
+  <h3>位点 #{{ s.index }}：{{ s.ids|join(', ') }}（{{ s.pos }} {{ s.ref }}→{{ s.alt }}，{{ s.kind_label }}）</h3>
+  <p class="hint">
+    CDS 位置 {{ s.cds_start }}-{{ s.cds_end }} ｜ 长度变化 {{ '+' if s.length_delta >= 0 else '' }}{{ s.length_delta }} bp
+    {% if s.frameshift %}｜ <span class="error">移码</span>{% endif %}
+    {% if s.premature_stop %}｜ <span class="error">提前终止</span>{% endif %}
+    ｜ 首个变化位置：{{ s.first_change if s.first_change else '无氨基酸变化' }}
+  </p>
+  <p class="hint">参考蛋白：</p>
+  <pre class="seq-block">{{ s.ref_protein }}</pre>
+  <p class="hint">变异蛋白：</p>
+  <pre class="seq-block">{{ s.alt_protein }}</pre>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

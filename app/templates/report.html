@@ -57,5 +57,66 @@
   <h3>标准 VCF</h3>
   <pre class="vcf">{{ payload.vcf }}</pre>
 </section>
+
+{% if has_ref_seq %}
+<section class="card">
+  <h3>编码影响分析</h3>
+  {% if not is_current %}
+  <p class="error">本报告已不是当前结论（当前为 FASTA v{{ fv }} / CSV v{{ cv }}）。
+    在此运行的分析只作为历史依据留存，不会被显示为当前结论。</p>
+  {% endif %}
+  <p class="hint">
+    分析固定本报告（FASTA v{{ report.fasta_version }} / CSV v{{ report.csv_version }}）
+    及其参考序列 {{ payload.chrom }}，不受之后输入更正影响。
+    填写 1 至 2 段编码外显子（1 基、闭区间，可任意顺序）；两段外显子越界、重叠
+    或拼接长度不是 3 的倍数时整次拒绝。插入点与受影响碱基必须在同一段外显子内，
+    跨外显子边界的位点标为“边界不可判定”。
+  </p>
+  <form method="post" action="{{ url_for('main.analyze_report_coding', bid=batch.id, rid=report.id) }}">
+    <label>链方向
+      <select name="strand">
+        <option value="+">+（正链）</option>
+        <option value="-">-（负链）</option>
+      </select>
+    </label>
+    <label>外显子 1 起 <input type="number" name="exon1_start" min="1" required>
+      止 <input type="number" name="exon1_end" min="1" required></label>
+    <label>外显子 2 起 <input type="number" name="exon2_start" min="1">
+      止 <input type="number" name="exon2_end" min="1">（可选）</label>
+    <button type="submit">运行编码影响分析</button>
+  </form>
+</section>
+{% else %}
+<section class="card">
+  <h3>编码影响分析</h3>
+  <p class="hint">该报告由旧版本生成，未保存固定参考序列，无法进行编码影响分析；请重新计算后再试。</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h3>编码影响分析历史</h3>
+  {% if analysis_states %}
+  <table>
+    <tr><th>分析</th><th>结论</th><th>外显子 / 链</th><th>生成时间 (UTC)</th><th>状态</th></tr>
+    {% for item in analysis_states %}
+    {% set a = item.row %}
+    <tr>
+      <td><a href="{{ url_for('main.analysis_detail', bid=batch.id, rid=report.id, aid=a.id) }}">#{{ a.id }}</a></td>
+      <td>
+        {% if item.state == 'current' %}<span class="badge ok">当前结论</span>
+        {% elif item.state == 'historical' %}<span class="badge old">历史依据（已被更新的分析取代）</span>
+        {% elif item.state == 'expired' %}<span class="badge old">已过期（报告版本已更新，不是当前结论）</span>
+        {% else %}<span class="badge bad">已拒绝（无部分结果）</span>{% endif %}
+      </td>
+      <td class="seq">{{ exon_display(a.exon_def) }}</td>
+      <td>{{ a.created_at }}</td>
+      <td>{{ '成功' if a.status == 'ok' else '已拒绝' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint">尚未运行编码影响分析。</p>
+  {% endif %}
+</section>
 {% endif %}
 {% endblock %}
