@@ -1,0 +1,46 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: #f4f6f8; color: #222;
+}
+header {
+  background: #1f3a5f; color: #fff; padding: 1rem 2rem;
+}
+header h1 { margin: 0; font-size: 1.3rem; }
+header a { color: #fff; text-decoration: none; }
+.tagline { margin: .3rem 0 0; font-size: .85rem; opacity: .8; }
+main { max-width: 1000px; margin: 1.5rem auto; padding: 0 1rem; }
+footer { text-align: center; color: #888; font-size: .8rem; padding: 1.5rem; }
+.card {
+  background: #fff; border: 1px solid #e2e6ea; border-radius: 8px;
+  padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+}
+.card h2, .card h3 { margin-top: 0; }
+table { border-collapse: collapse; width: 100%; margin: .5rem 0; font-size: .92rem; }
+th, td { border: 1px solid #dde3e8; padding: .45rem .6rem; text-align: left; }
+th { background: #eef2f6; }
+.seq { font-family: ui-monospace, Consolas, monospace; }
+.hint { color: #667; font-size: .88rem; }
+.error { color: #b00020; font-weight: 600; }
+.flash {
+  background: #fff8e1; border: 1px solid #f0d98c; border-radius: 6px;
+  padding: .6rem .9rem; margin-bottom: 1rem;
+}
+.badge { display: inline-block; border-radius: 4px; padding: .1rem .5rem; font-size: .82rem; }
+.badge.ok { background: #d9f2e3; color: #146c2e; }
+.badge.bad { background: #fbdfe2; color: #a01225; }
+.badge.old { background: #eceff1; color: #666; }
+.badge.run { background: #dbeafe; color: #1d4ed8; }
+form { margin: .6rem 0; }
+label { display: block; margin: .5rem 0; }
+input[type=file], input[type=text] { margin-left: .5rem; }
+button {
+  background: #1f3a5f; color: #fff; border: 0; border-radius: 5px;
+  padding: .45rem 1.1rem; cursor: pointer; font-size: .9rem;
+}
+button:hover { background: #2c5282; }
+pre.vcf {
+  background: #0f172a; color: #d7e3f4; padding: .8rem 1rem; border-radius: 6px;
+  overflow-x: auto; font-size: .85rem;
+}
+code { background: #eef2f6; border-radius: 3px; padding: 0 .3rem; }

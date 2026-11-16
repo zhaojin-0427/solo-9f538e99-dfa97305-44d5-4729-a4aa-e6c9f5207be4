@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}批次列表 · 变异归一化{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>新建批次</h2>
+  <p class="hint">
+    FASTA：单条染色体，至多 4096 碱基；CSV：至多 20 行，含表头
+    <code>ID,POS,REF,ALT</code>（POS 从 1 起），仅收单碱基替换及带锚定碱基的纯插入/缺失。
+  </p>
+  <form method="post" action="{{ url_for('main.create_batch') }}" enctype="multipart/form-data">
+    <label>批次名称 <input type="text" name="name" placeholder="例如：chr1-2026-11"></label>
+    <label>参考序列 FASTA <input type="file" name="fasta" accept=".fa,.fasta,.fna,.txt" required></label>
+    <label>变异 CSV <input type="file" name="csv" accept=".csv,.txt" required></label>
+    <button type="submit">创建并计算</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>批次列表</h2>
+  {% if batches %}
+  <table>
+    <tr><th>ID</th><th>名称</th><th>创建时间 (UTC)</th><th></th></tr>
+    {% for b in batches %}
+    <tr>
+      <td>#{{ b.id }}</td>
+      <td>{{ b.name }}</td>
+      <td>{{ b.created_at }}</td>
+      <td><a href="{{ url_for('main.batch_detail', bid=b.id) }}">查看</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint">还没有批次，请先上传 FASTA 与 CSV 创建。</p>
+  {% endif %}
+</section>
+{% endblock %}

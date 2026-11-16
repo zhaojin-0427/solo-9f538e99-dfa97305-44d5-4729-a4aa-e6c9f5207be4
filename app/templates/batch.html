@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}批次 #{{ batch.id }} · 变异归一化{% endblock %}
+{% block head %}{% if computing %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block content %}
+<h2>批次 #{{ batch.id }}：{{ batch.name }}</h2>
+<p class="hint">创建于 {{ batch.created_at }} UTC ｜ 当前输入版本：FASTA v{{ fv }} ・ CSV v{{ cv }}</p>
+
+<section class="card">
+  <h3>当前结论</h3>
+  {% if report and report.status == 'ok' %}
+    <p>
+      <span class="badge ok">当前报告 #{{ report.id }}</span>
+      固定版本 FASTA v{{ report.fasta_version }} / CSV v{{ report.csv_version }}，
+      生成于 {{ report.created_at }} UTC；参考 {{ payload.chrom }}（{{ payload.ref_len }} bp），
+      {{ payload.rows|length }} 行变异归并为 {{ payload.groups|length }} 个标准记录。
+    </p>
+    <table>
+      <tr><th>#</th><th>POS</th><th>REF</th><th>ALT</th><th>类型</th><th>源 ID（全部）</th></tr>
+      {% for g in payload.groups %}
+      <tr>
+        <td>{{ loop.index }}</td><td>{{ g.pos }}</td><td class="seq">{{ g.ref }}</td>
+        <td class="seq">{{ g.alt }}</td><td>{{ g.kind_label }}</td>
+        <td>{{ g.ids|join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p>
+      <a href="{{ url_for('main.report_detail', bid=batch.id, rid=report.id) }}">完整报告</a> ・
+      <a href="{{ url_for('main.report_vcf', bid=batch.id, rid=report.id) }}">下载标准 VCF</a>
+    </p>
+  {% elif report and report.status == 'failed' %}
+    <p><span class="badge bad">当前版本组合计算失败</span>
+       （报告 #{{ report.id }}，FASTA v{{ report.fasta_version }} / CSV v{{ report.csv_version }}）</p>
+    <p class="error">失败原因：{{ report.error }}</p>
+    <p class="hint">整批失败，未产生任何标准化结果；请在下方整份更正输入后重新提交。</p>
+  {% elif computing %}
+    <p><span class="badge run">计算中……</span> 页面每 2 秒自动刷新；此期间仍可提交更正。</p>
+  {% else %}
+    <p class="hint">等待计算任务排队。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>更正输入（整份替换，可分别提交）</h3>
+  <p class="hint">提交后立即按最新版本组合重新计算；旧报告仍可查看，但不再是当前结论。</p>
+  <form method="post" action="{{ url_for('main.correct_input', bid=batch.id, kind='fasta') }}" enctype="multipart/form-data">
+    <label>替换 FASTA（当前 v{{ fv }}）<input type="file" name="file" accept=".fa,.fasta,.fna,.txt" required></label>
+    <button type="submit">提交 FASTA 更正</button>
+  </form>
+  <form method="post" action="{{ url_for('main.correct_input', bid=batch.id, kind='csv') }}" enctype="multipart/form-data">
+    <label>替换 CSV（当前 v{{ cv }}）<input type="file" name="file" accept=".csv,.txt" required></label>
+    <button type="submit">提交 CSV 更正</button>
+  </form>
+</section>
+
+<section class="card">
+  <h3>报告历史</h3>
+  {% if reports %}
+  <table>
+    <tr><th>报告</th><th>版本 (FASTA/CSV)</th><th>状态</th><th>生成时间 (UTC)</th><th>结论</th></tr>
+    {% for r in reports %}
+    <tr>
+      <td><a href="{{ url_for('main.report_detail', bid=batch.id, rid=r.id) }}">#{{ r.id }}</a></td>
+      <td>v{{ r.fasta_version }} / v{{ r.csv_version }}</td>
+      <td>{{ '成功' if r.status == 'ok' else '失败' }}</td>
+      <td>{{ r.created_at }}</td>
+      <td>
+        {% if r.fasta_version == fv and r.csv_version == cv %}
+          <span class="badge ok">当前</span>
+        {% else %}
+          <span class="badge old">已过期</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint">尚无已完成的报告。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>计算任务</h3>
+  <table>
+    <tr><th>任务</th><th>版本 (FASTA/CSV)</th><th>状态</th><th>创建</th><th>完成</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>#{{ j.id }}</td>
+      <td>v{{ j.fasta_version }} / v{{ j.csv_version }}</td>
+      <td>{{ {'pending':'排队中','running':'计算中','done':'完成','failed':'失败'}[j.status] }}</td>
+      <td>{{ j.created_at }}</td>
+      <td>{{ j.finished_at or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

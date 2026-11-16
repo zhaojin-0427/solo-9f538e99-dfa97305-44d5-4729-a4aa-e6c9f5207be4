@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}报告 #{{ report.id }} · 批次 #{{ batch.id }}{% endblock %}
+{% block content %}
+<h2>报告 #{{ report.id }}（批次 #{{ batch.id }}：{{ batch.name }}）</h2>
+<p>
+  固定输入版本：FASTA v{{ report.fasta_version }} / CSV v{{ report.csv_version }} ｜
+  生成于 {{ report.created_at }} UTC
+  {% if report.status == 'ok' %}
+    {% if is_current %}<span class="badge ok">当前结论</span>
+    {% else %}<span class="badge old">已过期 · 当前版本为 FASTA v{{ fv }} / CSV v{{ cv }}，本报告不再是当前结论</span>{% endif %}
+  {% else %}
+    <span class="badge bad">失败</span>
+  {% endif %}
+</p>
+<p><a href="{{ url_for('main.batch_detail', bid=batch.id) }}">← 返回批次</a></p>
+
+{% if report.status == 'failed' %}
+<section class="card">
+  <h3>失败原因</h3>
+  <p class="error">{{ report.error }}</p>
+  <p class="hint">整批失败，本报告不含任何标准化结果（不留半份报告）。</p>
+</section>
+{% else %}
+<section class="card">
+  <h3>归并后的标准记录（{{ payload.groups|length }} 个）</h3>
+  <p class="hint">参考 {{ payload.chrom }}（{{ payload.ref_len }} bp）；等价判定依据：单条变异作用后的完整序列相同。</p>
+  <table>
+    <tr><th>#</th><th>POS</th><th>REF</th><th>ALT</th><th>类型</th><th>源 ID（全部）</th></tr>
+    {% for g in payload.groups %}
+    <tr>
+      <td>{{ loop.index }}</td><td>{{ g.pos }}</td><td class="seq">{{ g.ref }}</td>
+      <td class="seq">{{ g.alt }}</td><td>{{ g.kind_label }}</td>
+      <td>{{ g.ids|join(', ') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p><a href="{{ url_for('main.report_vcf', bid=batch.id, rid=report.id) }}">下载标准 VCF</a></p>
+</section>
+
+<section class="card">
+  <h3>源行 → 标准化对照（{{ payload.rows|length }} 行）</h3>
+  <table>
+    <tr><th>源 ID</th><th>文件行</th><th>原始 POS/REF/ALT</th><th>类型</th><th>标准化 POS/REF/ALT</th><th>归并组</th></tr>
+    {% for r in payload.rows %}
+    <tr>
+      <td>{{ r.id }}</td><td>{{ r.line }}</td>
+      <td class="seq">{{ r.pos }} / {{ r.ref }} / {{ r.alt }}</td>
+      <td>{{ r.kind_label }}</td>
+      <td class="seq">{{ r.norm_pos }} / {{ r.norm_ref }} / {{ r.norm_alt }}</td>
+      <td>#{{ r.group + 1 }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section class="card">
+  <h3>标准 VCF</h3>
+  <pre class="vcf">{{ payload.vcf }}</pre>
+</section>
+{% endif %}
+{% endblock %}

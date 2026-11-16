@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      # 模拟耗时计算的秒数；计算期间仍可提交输入更正
+      COMPUTE_DELAY_SECONDS: "2"
+    volumes:
+      - appdata:/data
+    restart: unless-stopped
+
+volumes:
+  appdata:
